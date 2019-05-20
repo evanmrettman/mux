@@ -12,7 +12,7 @@ type (
 		echo        *Echo
 		beforeFuncs []func()
 		afterFuncs  []func()
-		Writer      http.RequestCtx
+		Writer      *http.RequestCtx
 		Status      int
 		Size        int64
 		Committed   bool
@@ -21,7 +21,7 @@ type (
 
 // NewResponse creates a new instance of Response.
 func NewResponse(ctx *http.RequestCtx, e *Echo) (r *Response) {
-	return &Response{Writer: *ctx, echo: e}
+	return &Response{Writer: ctx, echo: e}
 }
 
 // Header returns the header map for the writer that will be sent by
@@ -85,7 +85,7 @@ func (r *Response) Hijack(h http.HijackHandler) {
 func (r *Response) reset(w http.RequestCtx) {
 	r.beforeFuncs = nil
 	r.afterFuncs = nil
-	r.Writer = w
+	r.Writer = &w
 	r.Size = 0
 	r.Status = http.StatusOK
 	r.Committed = false
