@@ -348,7 +348,7 @@ func (c *context) Cookie(name string) []byte {
 }
 
 func (c *context) SetCookie(cookie *http.Cookie) {
-	c.Request().Response.Header.SetCookie(cookie)
+	c.request.Response.Header.SetCookie(cookie)
 }
 
 // TODO: Make this return []*stdhttp.Cookie by getting struct fields by calling fasthttp functions
@@ -421,15 +421,15 @@ func (c *context) jsonPBlob(code int, callback string, i interface{}) (err error
 	if c.echo.Debug || pretty {
 		enc.SetIndent("", "  ")
 	}
-	c.Request().SetContentType(MIMEApplicationJavaScriptCharsetUTF8)
-	c.response.WriteHeader(code)
-	if _, err = c.response.Write([]byte(callback + "(")); err != nil {
+	c.request.SetContentType(MIMEApplicationJavaScriptCharsetUTF8)
+	c.request.SetStatusCode(code)
+	if _, err = c.request.Write([]byte(callback + "(")); err != nil {
 		return
 	}
 	if err = enc.Encode(i); err != nil {
 		return
 	}
-	if _, err = c.response.Write([]byte(");")); err != nil {
+	if _, err = c.request.Write([]byte(");")); err != nil {
 		return
 	}
 	return
@@ -440,8 +440,8 @@ func (c *context) json(code int, i interface{}, indent string) error {
 	if indent != "" {
 		enc.SetIndent("", indent)
 	}
-	c.Request().SetContentType(MIMEApplicationJSONCharsetUTF8)
-	c.response.WriteHeader(code)
+	c.request.SetContentType(MIMEApplicationJSONCharsetUTF8)
+	c.request.SetStatusCode(code)
 	return enc.Encode(i)
 }
 
@@ -466,26 +466,26 @@ func (c *context) JSONP(code int, callback string, i interface{}) (err error) {
 }
 
 func (c *context) JSONPBlob(code int, callback string, b []byte) (err error) {
-	c.Request().SetContentType(MIMEApplicationJavaScriptCharsetUTF8)
-	c.response.WriteHeader(code)
+	c.request.SetContentType(MIMEApplicationJavaScriptCharsetUTF8)
+	c.request.SetStatusCode(code)
 	if _, err = c.response.Write([]byte(callback + "(")); err != nil {
 		return
 	}
 	if _, err = c.response.Write(b); err != nil {
 		return
 	}
-	_, err = c.response.Write([]byte(");"))
+	_, err = c.request.Write([]byte(");"))
 	return
 }
 
 func (c *context) xml(code int, i interface{}, indent string) (err error) {
-	c.Request().SetContentType(MIMEApplicationXMLCharsetUTF8)
-	c.response.WriteHeader(code)
+	c.request.SetContentType(MIMEApplicationXMLCharsetUTF8)
+	c.request.SetStatusCode(code)
 	enc := xml.NewEncoder(c.response)
 	if indent != "" {
 		enc.Indent("", indent)
 	}
-	if _, err = c.response.Write([]byte(xml.Header)); err != nil {
+	if _, err = c.request.Write([]byte(xml.Header)); err != nil {
 		return
 	}
 	return enc.Encode(i)
@@ -504,12 +504,12 @@ func (c *context) XMLPretty(code int, i interface{}, indent string) (err error) 
 }
 
 func (c *context) XMLBlob(code int, b []byte) (err error) {
-	c.Request().SetContentType(MIMEApplicationXMLCharsetUTF8)
-	c.response.WriteHeader(code)
+	c.request.SetContentType(MIMEApplicationXMLCharsetUTF8)
+	c.request.SetStatusCode(code)
 	if _, err = c.response.Write([]byte(xml.Header)); err != nil {
 		return
 	}
-	_, err = c.response.Write(b)
+	_, err = c.request.Write(b)
 	return
 }
 
@@ -522,8 +522,8 @@ func (c *context) Blob(code int, contentType string, b []byte) (err error) {
 }
 
 func (c *context) Stream(code int, contentType string, r io.Reader) (err error) {
-	c.Request().SetContentType(contentType)
-	c.response.WriteHeader(code)
+	c.request.SetContentType(contentType)
+	c.request.SetStatusCode(code)
 	_, err = io.Copy(c.response, r)
 	return
 }
@@ -560,16 +560,19 @@ func (c *context) Inline(file, name string) error {
 }
 
 func (c *context) contentDisposition(file, name, dispositionType string) error {
+	// TODO: Am I supposed to be calling response here?
 	c.response.Header().Set(HeaderContentDisposition, fmt.Sprintf("%s; filename=%q", dispositionType, name))
 	return c.File(file)
 }
 
 func (c *context) NoContent(code int) error {
-	c.response.WriteHeader(code)
+	c.request.SetStatusCode(code)
+	// TODO: Should we also call c.request.Done() here?
 	return nil
 }
 
 func (c *context) Redirect(code int, url string) error {
+	// TODO: Am I supposed to be calling response here?
 	if code < 300 || code > 308 {
 		return ErrInvalidRedirectCode
 	}
