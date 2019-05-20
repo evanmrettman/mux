@@ -210,13 +210,6 @@ const (
 	defaultIndent = "  "
 )
 
-func (c *context) writeContentType(value string) {
-	header := c.Response().Header()
-	if string(header.Peek(HeaderContentType)[:]) == "" {
-		header.Set(HeaderContentType, value)
-	}
-}
-
 func (c *context) Request() *http.RequestCtx {
 	return c.request
 }
@@ -415,6 +408,11 @@ func (c *context) HTMLBlob(code int, b []byte) (err error) {
 
 func (c *context) String(code int, s string) (err error) {
 	return c.Blob(code, MIMETextPlainCharsetUTF8, []byte(s))
+	// TODO: Maybe use code below instead? It might be faster here...
+	/*c.request.SetContentType(MIMETextPlainCharsetUTF8)
+	c.request.SetStatusCode(code)
+	_, err = c.request.WriteString(s)
+	return err*/
 }
 
 func (c *context) jsonPBlob(code int, callback string, i interface{}) (err error) {
@@ -423,7 +421,7 @@ func (c *context) jsonPBlob(code int, callback string, i interface{}) (err error
 	if c.echo.Debug || pretty {
 		enc.SetIndent("", "  ")
 	}
-	c.writeContentType(MIMEApplicationJavaScriptCharsetUTF8)
+	c.Request().SetContentType(MIMEApplicationJavaScriptCharsetUTF8)
 	c.response.WriteHeader(code)
 	if _, err = c.response.Write([]byte(callback + "(")); err != nil {
 		return
@@ -442,7 +440,7 @@ func (c *context) json(code int, i interface{}, indent string) error {
 	if indent != "" {
 		enc.SetIndent("", indent)
 	}
-	c.writeContentType(MIMEApplicationJSONCharsetUTF8)
+	c.Request().SetContentType(MIMEApplicationJSONCharsetUTF8)
 	c.response.WriteHeader(code)
 	return enc.Encode(i)
 }
@@ -468,7 +466,7 @@ func (c *context) JSONP(code int, callback string, i interface{}) (err error) {
 }
 
 func (c *context) JSONPBlob(code int, callback string, b []byte) (err error) {
-	c.writeContentType(MIMEApplicationJavaScriptCharsetUTF8)
+	c.Request().SetContentType(MIMEApplicationJavaScriptCharsetUTF8)
 	c.response.WriteHeader(code)
 	if _, err = c.response.Write([]byte(callback + "(")); err != nil {
 		return
@@ -481,7 +479,7 @@ func (c *context) JSONPBlob(code int, callback string, b []byte) (err error) {
 }
 
 func (c *context) xml(code int, i interface{}, indent string) (err error) {
-	c.writeContentType(MIMEApplicationXMLCharsetUTF8)
+	c.Request().SetContentType(MIMEApplicationXMLCharsetUTF8)
 	c.response.WriteHeader(code)
 	enc := xml.NewEncoder(c.response)
 	if indent != "" {
@@ -506,7 +504,7 @@ func (c *context) XMLPretty(code int, i interface{}, indent string) (err error) 
 }
 
 func (c *context) XMLBlob(code int, b []byte) (err error) {
-	c.writeContentType(MIMEApplicationXMLCharsetUTF8)
+	c.Request().SetContentType(MIMEApplicationXMLCharsetUTF8)
 	c.response.WriteHeader(code)
 	if _, err = c.response.Write([]byte(xml.Header)); err != nil {
 		return
@@ -516,14 +514,15 @@ func (c *context) XMLBlob(code int, b []byte) (err error) {
 }
 
 func (c *context) Blob(code int, contentType string, b []byte) (err error) {
-	c.writeContentType(contentType)
-	c.response.WriteHeader(code)
-	_, err = c.response.Write(b)
+	c.request.SetContentType(contentType)
+	c.request.SetStatusCode(code)
+	_, err = c.request.Write(b)
+	c.request.Done()
 	return
 }
 
 func (c *context) Stream(code int, contentType string, r io.Reader) (err error) {
-	c.writeContentType(contentType)
+	c.Request().SetContentType(contentType)
 	c.response.WriteHeader(code)
 	_, err = io.Copy(c.response, r)
 	return
