@@ -39,14 +39,13 @@ package echo
 import (
 	"bytes"
 	stdContext "context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	stdLog "log"
 	"net"
-	"net/http"
+	stdhttp "net/http"
 	"net/url"
 	"path"
 	"path/filepath"
@@ -57,7 +56,7 @@ import (
 
 	"github.com/labstack/gommon/color"
 	"github.com/labstack/gommon/log"
-	"golang.org/x/crypto/acme"
+	http "github.com/valyala/fasthttp"
 	"golang.org/x/crypto/acme/autocert"
 )
 
@@ -86,6 +85,8 @@ type (
 		Validator        Validator
 		Renderer         Renderer
 		Logger           Logger
+		Addr             string
+		IsTLS            bool
 	}
 
 	// Route contains a handler and information for matching against requests.
@@ -133,16 +134,16 @@ type (
 // HTTP methods
 // NOTE: Deprecated, please use the stdlib constants directly instead.
 const (
-	CONNECT = http.MethodConnect
-	DELETE  = http.MethodDelete
-	GET     = http.MethodGet
-	HEAD    = http.MethodHead
-	OPTIONS = http.MethodOptions
-	PATCH   = http.MethodPatch
-	POST    = http.MethodPost
+	CONNECT = stdhttp.MethodConnect
+	DELETE  = stdhttp.MethodDelete
+	GET     = stdhttp.MethodGet
+	HEAD    = stdhttp.MethodHead
+	OPTIONS = stdhttp.MethodOptions
+	PATCH   = stdhttp.MethodPatch
+	POST    = stdhttp.MethodPost
 	// PROPFIND = "PROPFIND"
-	PUT   = http.MethodPut
-	TRACE = http.MethodTrace
+	PUT   = stdhttp.MethodPut
+	TRACE = stdhttp.MethodTrace
 )
 
 // MIME types
@@ -241,16 +242,16 @@ ____________________________________O/_______
 
 var (
 	methods = [...]string{
-		http.MethodConnect,
-		http.MethodDelete,
-		http.MethodGet,
-		http.MethodHead,
-		http.MethodOptions,
-		http.MethodPatch,
-		http.MethodPost,
+		stdhttp.MethodConnect,
+		stdhttp.MethodDelete,
+		stdhttp.MethodGet,
+		stdhttp.MethodHead,
+		stdhttp.MethodOptions,
+		stdhttp.MethodPatch,
+		stdhttp.MethodPost,
 		PROPFIND,
-		http.MethodPut,
-		http.MethodTrace,
+		stdhttp.MethodPut,
+		stdhttp.MethodTrace,
 	}
 )
 
@@ -298,24 +299,24 @@ func New() (e *Echo) {
 		colorer:  color.New(),
 		maxParam: new(int),
 	}
-	e.Server.Handler = e
-	e.TLSServer.Handler = e
+	e.Server.Handler = e.ServeHTTP
+	e.TLSServer.Handler = e.ServeHTTP
 	e.HTTPErrorHandler = e.DefaultHTTPErrorHandler
 	e.Binder = &DefaultBinder{}
 	e.Logger.SetLevel(log.ERROR)
 	e.StdLogger = stdLog.New(e.Logger.Output(), e.Logger.Prefix()+": ", 0)
 	e.pool.New = func() interface{} {
-		return e.NewContext(nil, nil)
+		return e.NewContext(nil)
 	}
 	e.router = NewRouter(e)
 	return
 }
 
 // NewContext returns a Context instance.
-func (e *Echo) NewContext(r *http.Request, w http.ResponseWriter) Context {
+func (e *Echo) NewContext(ctx *http.RequestCtx) Context {
 	return &context{
-		request:  r,
-		response: NewResponse(w, e),
+		request:  ctx,
+		response: NewResponse(ctx, e),
 		store:    make(Map),
 		echo:     e,
 		pvalues:  make([]string, *e.maxParam),
@@ -345,7 +346,7 @@ func (e *Echo) DefaultHTTPErrorHandler(err error, c Context) {
 	} else if e.Debug {
 		msg = err.Error()
 	} else {
-		msg = http.StatusText(code)
+		msg = stdhttp.StatusText(code)
 	}
 	if _, ok := msg.(string); ok {
 		msg = Map{"message": msg}
@@ -353,7 +354,7 @@ func (e *Echo) DefaultHTTPErrorHandler(err error, c Context) {
 
 	// Send response
 	if !c.Response().Committed {
-		if c.Request().Method == http.MethodHead { // Issue #608
+		if string(c.Request().Method()[:]) == stdhttp.MethodHead { // Issue #608
 			err = c.NoContent(code)
 		} else {
 			err = c.JSON(code, msg)
@@ -377,55 +378,55 @@ func (e *Echo) Use(middleware ...MiddlewareFunc) {
 // CONNECT registers a new CONNECT route for a path with matching handler in the
 // router with optional route-level middleware.
 func (e *Echo) CONNECT(path string, h HandlerFunc, m ...MiddlewareFunc) *Route {
-	return e.Add(http.MethodConnect, path, h, m...)
+	return e.Add(stdhttp.MethodConnect, path, h, m...)
 }
 
 // DELETE registers a new DELETE route for a path with matching handler in the router
 // with optional route-level middleware.
 func (e *Echo) DELETE(path string, h HandlerFunc, m ...MiddlewareFunc) *Route {
-	return e.Add(http.MethodDelete, path, h, m...)
+	return e.Add(stdhttp.MethodDelete, path, h, m...)
 }
 
 // GET registers a new GET route for a path with matching handler in the router
 // with optional route-level middleware.
 func (e *Echo) GET(path string, h HandlerFunc, m ...MiddlewareFunc) *Route {
-	return e.Add(http.MethodGet, path, h, m...)
+	return e.Add(stdhttp.MethodGet, path, h, m...)
 }
 
 // HEAD registers a new HEAD route for a path with matching handler in the
 // router with optional route-level middleware.
 func (e *Echo) HEAD(path string, h HandlerFunc, m ...MiddlewareFunc) *Route {
-	return e.Add(http.MethodHead, path, h, m...)
+	return e.Add(stdhttp.MethodHead, path, h, m...)
 }
 
 // OPTIONS registers a new OPTIONS route for a path with matching handler in the
 // router with optional route-level middleware.
 func (e *Echo) OPTIONS(path string, h HandlerFunc, m ...MiddlewareFunc) *Route {
-	return e.Add(http.MethodOptions, path, h, m...)
+	return e.Add(stdhttp.MethodOptions, path, h, m...)
 }
 
 // PATCH registers a new PATCH route for a path with matching handler in the
 // router with optional route-level middleware.
 func (e *Echo) PATCH(path string, h HandlerFunc, m ...MiddlewareFunc) *Route {
-	return e.Add(http.MethodPatch, path, h, m...)
+	return e.Add(stdhttp.MethodPatch, path, h, m...)
 }
 
 // POST registers a new POST route for a path with matching handler in the
 // router with optional route-level middleware.
 func (e *Echo) POST(path string, h HandlerFunc, m ...MiddlewareFunc) *Route {
-	return e.Add(http.MethodPost, path, h, m...)
+	return e.Add(stdhttp.MethodPost, path, h, m...)
 }
 
 // PUT registers a new PUT route for a path with matching handler in the
 // router with optional route-level middleware.
 func (e *Echo) PUT(path string, h HandlerFunc, m ...MiddlewareFunc) *Route {
-	return e.Add(http.MethodPut, path, h, m...)
+	return e.Add(stdhttp.MethodPut, path, h, m...)
 }
 
 // TRACE registers a new TRACE route for a path with matching handler in the
 // router with optional route-level middleware.
 func (e *Echo) TRACE(path string, h HandlerFunc, m ...MiddlewareFunc) *Route {
-	return e.Add(http.MethodTrace, path, h, m...)
+	return e.Add(stdhttp.MethodTrace, path, h, m...)
 }
 
 // Any registers a new route for all HTTP methods and path with matching handler
@@ -566,20 +567,20 @@ func (e *Echo) ReleaseContext(c Context) {
 }
 
 // ServeHTTP implements `http.Handler` interface, which serves HTTP requests.
-func (e *Echo) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (e *Echo) ServeHTTP(ctx *http.RequestCtx) {
 	// Acquire context
 	c := e.pool.Get().(*context)
-	c.Reset(r, w)
+	c.Reset(ctx)
 
 	h := NotFoundHandler
 
 	if e.premiddleware == nil {
-		e.router.Find(r.Method, getPath(r), c)
+		e.router.Find(string(ctx.Method()[:]), getPath(ctx), c)
 		h = c.Handler()
 		h = applyMiddleware(h, e.middleware...)
 	} else {
 		h = func(c Context) error {
-			e.router.Find(r.Method, getPath(r), c)
+			e.router.Find(string(ctx.Method()[:]), getPath(ctx), c)
 			h := c.Handler()
 			h = applyMiddleware(h, e.middleware...)
 			return h(c)
@@ -598,14 +599,14 @@ func (e *Echo) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // Start starts an HTTP server.
 func (e *Echo) Start(address string) error {
-	e.Server.Addr = address
+	e.Addr = address
 	return e.StartServer(e.Server)
 }
 
 // StartTLS starts an HTTPS server.
 // If `certFile` or `keyFile` is `string` the values are treated as file paths.
 // If `certFile` or `keyFile` is `[]byte` the values are treated as the certificate or key as-is.
-func (e *Echo) StartTLS(address string, certFile, keyFile interface{}) (err error) {
+func (e *Echo) StartTLS(address string, certFile, keyFile interface{}, nph http.ServeHandler) (err error) {
 	var cert []byte
 	if cert, err = filepathOrContent(certFile); err != nil {
 		return
@@ -617,13 +618,9 @@ func (e *Echo) StartTLS(address string, certFile, keyFile interface{}) (err erro
 	}
 
 	s := e.TLSServer
-	s.TLSConfig = new(tls.Config)
-	s.TLSConfig.Certificates = make([]tls.Certificate, 1)
-	if s.TLSConfig.Certificates[0], err = tls.X509KeyPair(cert, key); err != nil {
-		return
-	}
+	s.AppendCert(string(cert[:]), string(key[:]))
 
-	return e.startTLS(address)
+	return e.startTLS(address, nph)
 }
 
 func filepathOrContent(fileOrContent interface{}) (content []byte, err error) {
@@ -637,21 +634,13 @@ func filepathOrContent(fileOrContent interface{}) (content []byte, err error) {
 	}
 }
 
-// StartAutoTLS starts an HTTPS server using certificates automatically installed from https://letsencrypt.org.
-func (e *Echo) StartAutoTLS(address string) error {
+func (e *Echo) startTLS(address string, nph http.ServeHandler) error {
 	s := e.TLSServer
-	s.TLSConfig = new(tls.Config)
-	s.TLSConfig.GetCertificate = e.AutoTLSManager.GetCertificate
-	s.TLSConfig.NextProtos = append(s.TLSConfig.NextProtos, acme.ALPNProto)
-	return e.startTLS(address)
-}
-
-func (e *Echo) startTLS(address string) error {
-	s := e.TLSServer
-	s.Addr = address
+	e.Addr = address
 	if !e.DisableHTTP2 {
-		s.TLSConfig.NextProtos = append(s.TLSConfig.NextProtos, "h2")
+		s.NextProto("h2", nph)
 	}
+	e.IsTLS = true
 	return e.StartServer(e.TLSServer)
 }
 
@@ -659,8 +648,7 @@ func (e *Echo) startTLS(address string) error {
 func (e *Echo) StartServer(s *http.Server) (err error) {
 	// Setup
 	e.colorer.SetOutput(e.Logger.Output())
-	s.ErrorLog = e.StdLogger
-	s.Handler = e
+	s.Handler = e.ServeHTTP
 	if e.Debug {
 		e.Logger.SetLevel(log.DEBUG)
 	}
@@ -669,9 +657,9 @@ func (e *Echo) StartServer(s *http.Server) (err error) {
 		e.colorer.Printf(banner, e.colorer.Red("v"+Version), e.colorer.Blue(website))
 	}
 
-	if s.TLSConfig == nil {
+	if e.IsTLS == false {
 		if e.Listener == nil {
-			e.Listener, err = newListener(s.Addr)
+			e.Listener, err = newListener(e.Addr)
 			if err != nil {
 				return err
 			}
@@ -682,11 +670,11 @@ func (e *Echo) StartServer(s *http.Server) (err error) {
 		return s.Serve(e.Listener)
 	}
 	if e.TLSListener == nil {
-		l, err := newListener(s.Addr)
+		_, err := newListener(e.Addr)
 		if err != nil {
 			return err
 		}
-		e.TLSListener = tls.NewListener(l, s.TLSConfig)
+		e.TLSListener, _ = net.Listen("udp4", "ip4")
 	}
 	if !e.HidePort {
 		e.colorer.Printf("⇨ https server started on %s\n", e.colorer.Green(e.TLSListener.Addr()))
@@ -694,27 +682,18 @@ func (e *Echo) StartServer(s *http.Server) (err error) {
 	return s.Serve(e.TLSListener)
 }
 
-// Close immediately stops the server.
-// It internally calls `http.Server#Close()`.
-func (e *Echo) Close() error {
-	if err := e.TLSServer.Close(); err != nil {
-		return err
-	}
-	return e.Server.Close()
-}
-
 // Shutdown stops the server gracefully.
 // It internally calls `http.Server#Shutdown()`.
 func (e *Echo) Shutdown(ctx stdContext.Context) error {
-	if err := e.TLSServer.Shutdown(ctx); err != nil {
+	if err := e.TLSServer.Shutdown(); err != nil {
 		return err
 	}
-	return e.Server.Shutdown(ctx)
+	return e.Server.Shutdown()
 }
 
 // NewHTTPError creates a new HTTPError instance.
 func NewHTTPError(code int, message ...interface{}) *HTTPError {
-	he := &HTTPError{Code: code, Message: http.StatusText(code)}
+	he := &HTTPError{Code: code, Message: stdhttp.StatusText(code)}
 	if len(message) > 0 {
 		he.Message = message[0]
 	}
@@ -733,30 +712,32 @@ func (he *HTTPError) SetInternal(err error) *HTTPError {
 }
 
 // WrapHandler wraps `http.Handler` into `echo.HandlerFunc`.
-func WrapHandler(h http.Handler) HandlerFunc {
+func (e *Echo) WrapHandler(h http.RequestHandler) HandlerFunc {
 	return func(c Context) error {
-		h.ServeHTTP(c.Response(), c.Request())
+		e.ServeHTTP(c.Request())
 		return nil
 	}
 }
 
 // WrapMiddleware wraps `func(http.Handler) http.Handler` into `echo.MiddlewareFunc`
-func WrapMiddleware(m func(http.Handler) http.Handler) MiddlewareFunc {
+func (e *Echo) WrapMiddleware(m func(http.RequestHandler) http.RequestHandler) MiddlewareFunc {
 	return func(next HandlerFunc) HandlerFunc {
 		return func(c Context) (err error) {
-			m(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				c.SetRequest(r)
+			m(http.RequestHandler(func(ctx *http.RequestCtx) {
+				c.SetRequest(ctx)
 				err = next(c)
-			})).ServeHTTP(c.Response(), c.Request())
+			}))
+
+			e.ServeHTTP(c.Request())
 			return
 		}
 	}
 }
 
-func getPath(r *http.Request) string {
-	path := r.URL.RawPath
+func getPath(r *http.RequestCtx) string {
+	path := string(r.Request.URI().PathOriginal()[:]) // TODO: Check if equivalent to r.URL.RawPath
 	if path == "" {
-		path = r.URL.Path
+		path = string(r.Request.URI().Path()[:]) // TODO: Check if equivalent to r.URL.Path
 	}
 	return path
 }

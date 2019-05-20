@@ -1,6 +1,6 @@
 package echo
 
-import "net/http"
+import stdhttp "net/http"
 
 type (
 	// Router is the registry of all registered routes for an `Echo` instance for
@@ -228,50 +228,50 @@ func (n *node) findChildByKind(t kind) *node {
 
 func (n *node) addHandler(method string, h HandlerFunc) {
 	switch method {
-	case http.MethodConnect:
+	case stdhttp.MethodConnect:
 		n.methodHandler.connect = h
-	case http.MethodDelete:
+	case stdhttp.MethodDelete:
 		n.methodHandler.delete = h
-	case http.MethodGet:
+	case stdhttp.MethodGet:
 		n.methodHandler.get = h
-	case http.MethodHead:
+	case stdhttp.MethodHead:
 		n.methodHandler.head = h
-	case http.MethodOptions:
+	case stdhttp.MethodOptions:
 		n.methodHandler.options = h
-	case http.MethodPatch:
+	case stdhttp.MethodPatch:
 		n.methodHandler.patch = h
-	case http.MethodPost:
+	case stdhttp.MethodPost:
 		n.methodHandler.post = h
 	case PROPFIND:
 		n.methodHandler.propfind = h
-	case http.MethodPut:
+	case stdhttp.MethodPut:
 		n.methodHandler.put = h
-	case http.MethodTrace:
+	case stdhttp.MethodTrace:
 		n.methodHandler.trace = h
 	}
 }
 
 func (n *node) findHandler(method string) HandlerFunc {
 	switch method {
-	case http.MethodConnect:
+	case stdhttp.MethodConnect:
 		return n.methodHandler.connect
-	case http.MethodDelete:
+	case stdhttp.MethodDelete:
 		return n.methodHandler.delete
-	case http.MethodGet:
+	case stdhttp.MethodGet:
 		return n.methodHandler.get
-	case http.MethodHead:
+	case stdhttp.MethodHead:
 		return n.methodHandler.head
-	case http.MethodOptions:
+	case stdhttp.MethodOptions:
 		return n.methodHandler.options
-	case http.MethodPatch:
+	case stdhttp.MethodPatch:
 		return n.methodHandler.patch
-	case http.MethodPost:
+	case stdhttp.MethodPost:
 		return n.methodHandler.post
 	case PROPFIND:
 		return n.methodHandler.propfind
-	case http.MethodPut:
+	case stdhttp.MethodPut:
 		return n.methodHandler.put
-	case http.MethodTrace:
+	case stdhttp.MethodTrace:
 		return n.methodHandler.trace
 	default:
 		return nil

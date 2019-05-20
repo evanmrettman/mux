@@ -5,10 +5,12 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"net/http"
+	stdhttp "net/http"
 	"reflect"
 	"strconv"
 	"strings"
+
+	http "github.com/valyala/fasthttp"
 )
 
 type (
@@ -29,9 +31,9 @@ type (
 
 // Bind implements the `Binder#Bind` function.
 func (b *DefaultBinder) Bind(i interface{}, c Context) (err error) {
-	req := c.Request()
-	if req.ContentLength == 0 {
-		if req.Method == http.MethodGet || req.Method == http.MethodDelete {
+	req := c.Request().Request
+	if req.Header.ContentLength() == 0 {
+		if string(req.Header.Method()) == stdhttp.MethodGet || string(req.Header.Method()) == stdhttp.MethodDelete {
 			if err = b.bindData(i, c.QueryParams(), "query"); err != nil {
 				return NewHTTPError(http.StatusBadRequest, err.Error()).SetInternal(err)
 			}
@@ -39,10 +41,10 @@ func (b *DefaultBinder) Bind(i interface{}, c Context) (err error) {
 		}
 		return NewHTTPError(http.StatusBadRequest, "Request body can't be empty")
 	}
-	ctype := req.Header.Get(HeaderContentType)
+	ctype := string(req.Header.Peek(HeaderContentType)[:])
 	switch {
 	case strings.HasPrefix(ctype, MIMEApplicationJSON):
-		if err = json.NewDecoder(req.Body).Decode(i); err != nil {
+		if err = json.Unmarshal(req.Body(), &i); err != nil {
 			if ute, ok := err.(*json.UnmarshalTypeError); ok {
 				return NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Unmarshal type error: expected=%v, got=%v, field=%v, offset=%v", ute.Type, ute.Value, ute.Field, ute.Offset)).SetInternal(err)
 			} else if se, ok := err.(*json.SyntaxError); ok {
@@ -51,7 +53,7 @@ func (b *DefaultBinder) Bind(i interface{}, c Context) (err error) {
 			return NewHTTPError(http.StatusBadRequest, err.Error()).SetInternal(err)
 		}
 	case strings.HasPrefix(ctype, MIMEApplicationXML), strings.HasPrefix(ctype, MIMETextXML):
-		if err = xml.NewDecoder(req.Body).Decode(i); err != nil {
+		if err = xml.Unmarshal(req.Body(), &i); err != nil {
 			if ute, ok := err.(*xml.UnsupportedTypeError); ok {
 				return NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Unsupported type error: type=%v, error=%v", ute.Type, ute.Error())).SetInternal(err)
 			} else if se, ok := err.(*xml.SyntaxError); ok {

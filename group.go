@@ -1,8 +1,9 @@
 package echo
 
 import (
-	"net/http"
 	"path"
+
+	stdhttp "net/http"
 )
 
 type (
@@ -30,47 +31,47 @@ func (g *Group) Use(middleware ...MiddlewareFunc) {
 
 // CONNECT implements `Echo#CONNECT()` for sub-routes within the Group.
 func (g *Group) CONNECT(path string, h HandlerFunc, m ...MiddlewareFunc) *Route {
-	return g.Add(http.MethodConnect, path, h, m...)
+	return g.Add(stdhttp.MethodConnect, path, h, m...)
 }
 
 // DELETE implements `Echo#DELETE()` for sub-routes within the Group.
 func (g *Group) DELETE(path string, h HandlerFunc, m ...MiddlewareFunc) *Route {
-	return g.Add(http.MethodDelete, path, h, m...)
+	return g.Add(stdhttp.MethodDelete, path, h, m...)
 }
 
 // GET implements `Echo#GET()` for sub-routes within the Group.
 func (g *Group) GET(path string, h HandlerFunc, m ...MiddlewareFunc) *Route {
-	return g.Add(http.MethodGet, path, h, m...)
+	return g.Add(stdhttp.MethodGet, path, h, m...)
 }
 
 // HEAD implements `Echo#HEAD()` for sub-routes within the Group.
 func (g *Group) HEAD(path string, h HandlerFunc, m ...MiddlewareFunc) *Route {
-	return g.Add(http.MethodHead, path, h, m...)
+	return g.Add(stdhttp.MethodHead, path, h, m...)
 }
 
 // OPTIONS implements `Echo#OPTIONS()` for sub-routes within the Group.
 func (g *Group) OPTIONS(path string, h HandlerFunc, m ...MiddlewareFunc) *Route {
-	return g.Add(http.MethodOptions, path, h, m...)
+	return g.Add(stdhttp.MethodOptions, path, h, m...)
 }
 
 // PATCH implements `Echo#PATCH()` for sub-routes within the Group.
 func (g *Group) PATCH(path string, h HandlerFunc, m ...MiddlewareFunc) *Route {
-	return g.Add(http.MethodPatch, path, h, m...)
+	return g.Add(stdhttp.MethodPatch, path, h, m...)
 }
 
 // POST implements `Echo#POST()` for sub-routes within the Group.
 func (g *Group) POST(path string, h HandlerFunc, m ...MiddlewareFunc) *Route {
-	return g.Add(http.MethodPost, path, h, m...)
+	return g.Add(stdhttp.MethodPost, path, h, m...)
 }
 
 // PUT implements `Echo#PUT()` for sub-routes within the Group.
 func (g *Group) PUT(path string, h HandlerFunc, m ...MiddlewareFunc) *Route {
-	return g.Add(http.MethodPut, path, h, m...)
+	return g.Add(stdhttp.MethodPut, path, h, m...)
 }
 
 // TRACE implements `Echo#TRACE()` for sub-routes within the Group.
 func (g *Group) TRACE(path string, h HandlerFunc, m ...MiddlewareFunc) *Route {
-	return g.Add(http.MethodTrace, path, h, m...)
+	return g.Add(stdhttp.MethodTrace, path, h, m...)
 }
 
 // Any implements `Echo#Any()` for sub-routes within the Group.

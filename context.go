@@ -8,23 +8,24 @@ import (
 	"io"
 	"mime/multipart"
 	"net"
-	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+
+	http "github.com/valyala/fasthttp"
 )
 
 type (
 	// Context represents the context of the current HTTP request. It holds request and
 	// response objects, path, path parameters, data and registered handler.
 	Context interface {
-		// Request returns `*http.Request`.
-		Request() *http.Request
+		// Request returns `*http.RequestCtx`.
+		Request() *http.RequestCtx
 
-		// SetRequest sets `*http.Request`.
-		SetRequest(r *http.Request)
+		// SetRequest sets `*http.RequestCtx`.
+		SetRequest(r *http.RequestCtx)
 
 		// Response returns `*Response`.
 		Response() *Response
@@ -85,13 +86,13 @@ type (
 		MultipartForm() (*multipart.Form, error)
 
 		// Cookie returns the named cookie provided in the request.
-		Cookie(name string) (*http.Cookie, error)
+		Cookie(name string) []byte
 
 		// SetCookie adds a `Set-Cookie` header in HTTP response.
 		SetCookie(cookie *http.Cookie)
 
 		// Cookies returns the HTTP cookies sent with the request.
-		Cookies() []*http.Cookie
+		Cookies() map[string][]byte
 
 		// Get retrieves data from the context.
 		Get(key string) interface{}
@@ -186,11 +187,11 @@ type (
 		// Reset resets the context after request completes. It must be called along
 		// with `Echo#AcquireContext()` and `Echo#ReleaseContext()`.
 		// See `Echo#ServeHTTP()`
-		Reset(r *http.Request, w http.ResponseWriter)
+		Reset(ctx *http.RequestCtx)
 	}
 
 	context struct {
-		request  *http.Request
+		request  *http.RequestCtx
 		response *Response
 		path     string
 		pnames   []string
@@ -211,16 +212,16 @@ const (
 
 func (c *context) writeContentType(value string) {
 	header := c.Response().Header()
-	if header.Get(HeaderContentType) == "" {
+	if string(header.Peek(HeaderContentType)[:]) == "" {
 		header.Set(HeaderContentType, value)
 	}
 }
 
-func (c *context) Request() *http.Request {
+func (c *context) Request() *http.RequestCtx {
 	return c.request
 }
 
-func (c *context) SetRequest(r *http.Request) {
+func (c *context) SetRequest(r *http.RequestCtx) {
 	c.request = r
 }
 
@@ -229,11 +230,11 @@ func (c *context) Response() *Response {
 }
 
 func (c *context) IsTLS() bool {
-	return c.request.TLS != nil
+	return c.request.IsTLS()
 }
 
 func (c *context) IsWebSocket() bool {
-	upgrade := c.request.Header.Get(HeaderUpgrade)
+	upgrade := string(c.request.Request.Header.Peek(HeaderUpgrade)[:])
 	return strings.ToLower(upgrade) == "websocket"
 }
 
@@ -243,29 +244,29 @@ func (c *context) Scheme() string {
 	if c.IsTLS() {
 		return "https"
 	}
-	if scheme := c.request.Header.Get(HeaderXForwardedProto); scheme != "" {
+	if scheme := string(c.request.Request.Header.Peek(HeaderXForwardedProto)[:]); scheme != "" {
 		return scheme
 	}
-	if scheme := c.request.Header.Get(HeaderXForwardedProtocol); scheme != "" {
+	if scheme := string(c.request.Request.Header.Peek(HeaderXForwardedProtocol)[:]); scheme != "" {
 		return scheme
 	}
-	if ssl := c.request.Header.Get(HeaderXForwardedSsl); ssl == "on" {
+	if ssl := string(c.request.Request.Header.Peek(HeaderXForwardedSsl)[:]); ssl == "on" {
 		return "https"
 	}
-	if scheme := c.request.Header.Get(HeaderXUrlScheme); scheme != "" {
+	if scheme := string(c.request.Request.Header.Peek(HeaderXUrlScheme)[:]); scheme != "" {
 		return scheme
 	}
 	return "http"
 }
 
 func (c *context) RealIP() string {
-	if ip := c.request.Header.Get(HeaderXForwardedFor); ip != "" {
+	if ip := string(c.request.Request.Header.Peek(HeaderXForwardedFor)[:]); ip != "" {
 		return strings.Split(ip, ", ")[0]
 	}
-	if ip := c.request.Header.Get(HeaderXRealIP); ip != "" {
+	if ip := string(c.request.Request.Header.Peek(HeaderXRealIP)[:]); ip != "" {
 		return ip
 	}
-	ra, _, _ := net.SplitHostPort(c.request.RemoteAddr)
+	ra, _, _ := net.SplitHostPort(c.request.RemoteAddr().String())
 	return ra
 }
 
@@ -306,59 +307,64 @@ func (c *context) SetParamValues(values ...string) {
 
 func (c *context) QueryParam(name string) string {
 	if c.query == nil {
-		c.query = c.request.URL.Query()
+		c.query, _ = url.ParseQuery(string(c.request.URI().QueryString()[:]))
 	}
 	return c.query.Get(name)
 }
 
 func (c *context) QueryParams() url.Values {
 	if c.query == nil {
-		c.query = c.request.URL.Query()
+		c.query, _ = url.ParseQuery(string(c.request.URI().QueryString()[:]))
+		// TODO: Figure out how to use the line below instead
+		//c.query = c.request.Request.URI().QueryArgs()
 	}
 	return c.query
 }
 
 func (c *context) QueryString() string {
-	return c.request.URL.RawQuery
+	return string(c.request.URI().QueryString()[:])
 }
 
 func (c *context) FormValue(name string) string {
-	return c.request.FormValue(name)
+	return string(c.request.FormValue(name)[:])
 }
 
 func (c *context) FormParams() (url.Values, error) {
-	if strings.HasPrefix(c.request.Header.Get(HeaderContentType), MIMEMultipartForm) {
-		if err := c.request.ParseMultipartForm(defaultMemory); err != nil {
-			return nil, err
-		}
-	} else {
-		if err := c.request.ParseForm(); err != nil {
+	mpf := new(multipart.Form)
+	err := *new(error)
+	if strings.HasPrefix(string(c.request.Request.Header.Peek(HeaderContentType)[:]), MIMEMultipartForm) {
+		if mpf, err = c.request.MultipartForm(); err != nil {
 			return nil, err
 		}
 	}
-	return c.request.Form, nil
+
+	return mpf.Value, nil
 }
 
 func (c *context) FormFile(name string) (*multipart.FileHeader, error) {
-	_, fh, err := c.request.FormFile(name)
+	fh, err := c.request.FormFile(name)
 	return fh, err
 }
 
 func (c *context) MultipartForm() (*multipart.Form, error) {
-	err := c.request.ParseMultipartForm(defaultMemory)
-	return c.request.MultipartForm, err
+	return c.request.MultipartForm()
 }
 
-func (c *context) Cookie(name string) (*http.Cookie, error) {
-	return c.request.Cookie(name)
+func (c *context) Cookie(name string) []byte {
+	return c.request.Request.Header.Cookie(name)
 }
 
 func (c *context) SetCookie(cookie *http.Cookie) {
-	http.SetCookie(c.Response(), cookie)
+	c.Request().Response.Header.SetCookie(cookie)
 }
 
-func (c *context) Cookies() []*http.Cookie {
-	return c.request.Cookies()
+// TODO: Make this return []*stdhttp.Cookie by getting struct fields by calling fasthttp functions
+func (c *context) Cookies() map[string][]byte {
+	cookies := make(map[string][]byte)
+	c.request.Request.Header.VisitAllCookie(func(key, value []byte) {
+		cookies[string(key[:])] = value
+	})
+	return cookies
 }
 
 func (c *context) Get(key string) interface{} {
@@ -542,7 +548,7 @@ func (c *context) File(file string) (err error) {
 			return
 		}
 	}
-	http.ServeContent(c.Response(), c.Request(), fi.Name(), fi.ModTime(), f)
+	http.ServeFile(c.Request(), file)
 	return
 }
 
@@ -593,9 +599,9 @@ func (c *context) Logger() Logger {
 	return c.echo.Logger
 }
 
-func (c *context) Reset(r *http.Request, w http.ResponseWriter) {
-	c.request = r
-	c.response.reset(w)
+func (c *context) Reset(ctx *http.RequestCtx) {
+	c.request = ctx
+	c.response.reset(*ctx)
 	c.query = nil
 	c.handler = NotFoundHandler
 	c.store = nil

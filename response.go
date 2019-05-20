@@ -1,9 +1,7 @@
 package echo
 
 import (
-	"bufio"
-	"net"
-	"net/http"
+	http "github.com/valyala/fasthttp"
 )
 
 type (
@@ -14,7 +12,7 @@ type (
 		echo        *Echo
 		beforeFuncs []func()
 		afterFuncs  []func()
-		Writer      http.ResponseWriter
+		Writer      http.RequestCtx
 		Status      int
 		Size        int64
 		Committed   bool
@@ -22,8 +20,8 @@ type (
 )
 
 // NewResponse creates a new instance of Response.
-func NewResponse(w http.ResponseWriter, e *Echo) (r *Response) {
-	return &Response{Writer: w, echo: e}
+func NewResponse(ctx *http.RequestCtx, e *Echo) (r *Response) {
+	return &Response{Writer: *ctx, echo: e}
 }
 
 // Header returns the header map for the writer that will be sent by
@@ -32,8 +30,8 @@ func NewResponse(w http.ResponseWriter, e *Echo) (r *Response) {
 // the "Trailer" header before the call to WriteHeader (see example)
 // To suppress implicit response headers, set their value to nil.
 // Example: https://golang.org/pkg/net/http/#example_ResponseWriter_trailers
-func (r *Response) Header() http.Header {
-	return r.Writer.Header()
+func (r *Response) Header() *http.ResponseHeader {
+	return &r.Writer.Response.Header
 }
 
 // Before registers a function which is called just before the response is written.
@@ -60,7 +58,7 @@ func (r *Response) WriteHeader(code int) {
 		fn()
 	}
 	r.Status = code
-	r.Writer.WriteHeader(code)
+	r.Writer.Response.SetStatusCode(code)
 	r.Committed = true
 }
 
@@ -77,21 +75,14 @@ func (r *Response) Write(b []byte) (n int, err error) {
 	return
 }
 
-// Flush implements the http.Flusher interface to allow an HTTP handler to flush
-// buffered data to the client.
-// See [http.Flusher](https://golang.org/pkg/net/http/#Flusher)
-func (r *Response) Flush() {
-	r.Writer.(http.Flusher).Flush()
-}
-
 // Hijack implements the http.Hijacker interface to allow an HTTP handler to
 // take over the connection.
 // See [http.Hijacker](https://golang.org/pkg/net/http/#Hijacker)
-func (r *Response) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	return r.Writer.(http.Hijacker).Hijack()
+func (r *Response) Hijack(h http.HijackHandler) {
+	r.Writer.Hijack(h)
 }
 
-func (r *Response) reset(w http.ResponseWriter) {
+func (r *Response) reset(w http.RequestCtx) {
 	r.beforeFuncs = nil
 	r.afterFuncs = nil
 	r.Writer = w
