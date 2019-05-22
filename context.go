@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 
+	jsoniter "github.com/json-iterator/go"
 	http "github.com/valyala/fasthttp"
 )
 
@@ -436,13 +437,14 @@ func (c *context) jsonPBlob(code int, callback string, i interface{}) (err error
 }
 
 func (c *context) json(code int, i interface{}, indent string) error {
-	enc := json.NewEncoder(c.response)
-	if indent != "" {
-		enc.SetIndent("", indent)
+	json := jsoniter.ConfigFastest
+	j, err := json.MarshalIndent(&i, "", indent)
+
+	if err != nil {
+		return err
 	}
-	c.request.SetContentType(MIMEApplicationJSONCharsetUTF8)
-	c.request.SetStatusCode(code)
-	return enc.Encode(i)
+
+	return c.Blob(code, MIMEApplicationJSONCharsetUTF8, j)
 }
 
 func (c *context) JSON(code int, i interface{}) (err error) {
