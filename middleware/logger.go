@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/rs/zerolog/log"
 	echo "github.com/spidernest-go/mux"
 	"github.com/valyala/fasttemplate"
 )
@@ -49,6 +49,8 @@ type (
 		// Optional. Default value DefaultLoggerConfig.Format.
 		Format string `yaml:"format"`
 
+		Logger io.Writer
+
 		// Optional. Default value DefaultLoggerConfig.CustomTimeFormat.
 		CustomTimeFormat string `yaml:"custom_time_format"`
 
@@ -60,6 +62,7 @@ type (
 var (
 	// DefaultLoggerConfig is the default Logger middleware config.
 	DefaultLoggerConfig = LoggerConfig{
+		Logger: os.Stdout,
 		Format: `{"time":"${time_rfc3339_nano}","id":"${id}","remote_ip":"${remote_ip}",` +
 			`"host":"${host}","method":"${method}","uri":"${uri}","user_agent":"${user_agent}",` +
 			`"status":${status},"error":"${error}","latency":${latency},"latency_human":"${latency_human}"` +
@@ -173,8 +176,8 @@ func LoggerWithConfig(config LoggerConfig) echo.MiddlewareFunc {
 				return
 			}
 
-			log.Info().Msg(buf.String())
-			return
+			config.Logger.Write(buf.Bytes())
+			return nil
 		}
 	}
 }
