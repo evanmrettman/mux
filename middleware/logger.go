@@ -168,7 +168,7 @@ func LoggerWithConfig(config LoggerConfig) echo.MiddlewareFunc {
 					case strings.HasPrefix(tag, "form:"):
 						return buf.Write([]byte(c.FormValue(tag[5:])))
 					case strings.HasPrefix(tag, "cookie:"):
-						buf.WriteString(NotAvailable)
+						buf.Write(req.Request.Header.Cookie(tag[7:]))
 					}
 				}
 				return 0, nil
