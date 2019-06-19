@@ -156,7 +156,7 @@ func LoggerWithConfig(config LoggerConfig) echo.MiddlewareFunc {
 				case "latency_human":
 					return buf.WriteString(stop.Sub(start).String())
 				case "bytes_in":
-					return buf.WriteString(NotAvailable)
+					return buf.WriteString(string(req.Request.Header.ContentLength()))
 				case "bytes_out":
 					return buf.WriteString(strconv.FormatInt(res.Size, 10))
 				default:
